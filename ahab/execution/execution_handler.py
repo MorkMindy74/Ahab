@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 
 class ExecutionHandler:
@@ -64,14 +65,25 @@ class ExecutionHandler:
         return None
 
     def _get_price_from_series(self, price_series):
-        """Safely extracts a scalar price from a pandas Series or scalar."""
-        if price_series is None or price_series.empty:
+        """Safely extracts a scalar price from a pandas Series, scalar, or numpy type."""
+        if price_series is None:
+            return None
+
+        # If it's already a scalar number, use it directly
+        if isinstance(price_series, (int, float, np.integer, np.floating)):
+            price = float(price_series)
+            if pd.isna(price) or price <= 1e-6:
+                return None
+            return price
+
+        # If it's a pandas Series, check if empty
+        if hasattr(price_series, 'empty') and price_series.empty:
             return None
         
         try:
             price = price_series.item()
         except (AttributeError, ValueError):
-            price = price_series
+            price = float(price_series)
         
         if pd.isna(price) or price <= 1e-6:
             return None

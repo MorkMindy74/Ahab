@@ -1,0 +1,54 @@
+# ╔══════════════════════════════════════════════════════════════════╗
+# ║  Ahab — Enhanced Configuration                                 ║
+# ║  Sortino reward · Stop-loss · Safe-harbor · RSI/MACD/VIX       ║
+# ╚══════════════════════════════════════════════════════════════════╝
+
+# ── Data ──────────────────────────────────────────────────────────
+data:
+  assets_file: "ahab/assets.txt"
+  train_start: "2013-01-01"
+  train_end: "2023-12-31"
+  initial_cash: 100_000.0
+  lookback_window: 60
+
+# ── GRPO Algorithm ────────────────────────────────────────────────
+grpo:
+  group_size: 16
+  collection_cycles: 4
+  update_epochs: 20
+  eps_clip: 0.2
+  gamma: 0.99
+  beta_kl: 0.01
+
+# ── Actor Network ─────────────────────────────────────────────────
+actor:
+  lr: 1.0e-5
+  action_std_init: 0.6
+  action_std_min: 0.4
+  std_decay_rate: 0.05
+  grad_clip: 0.5
+
+# ── Training Loop ─────────────────────────────────────────────────
+training:
+  max_timesteps: 3_000_000
+  save_freq: 50_000
+  log_freq: 1
+  log_dir: "enhanced_logs"
+  model_dir: "enhanced_models"
+
+# ── Execution Costs ───────────────────────────────────────────────
+execution:
+  commission_rate: 0.001
+  slippage_rate: 0.0005
+
+# ── Trading Rules ─────────────────────────────────────────────────
+trading:
+  action_threshold: 0.1
+  max_position_size: 0.20
+  min_trade_value: 100.0
+  cash_reserve: 0.05
+
+# ── Risk Management ──────────────────────────────────────────────
+risk:
+  stop_loss_threshold: 0.10
+  risk_free_daily: 0.0

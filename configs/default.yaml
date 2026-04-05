@@ -1,0 +1,54 @@
+# ╔══════════════════════════════════════════════════════════════════╗
+# ║  Ahab — Default Configuration                                  ║
+# ║  The Relentless Pursuit of Alpha                                ║
+# ╚══════════════════════════════════════════════════════════════════╝
+
+# ── Data ──────────────────────────────────────────────────────────
+data:
+  assets_file: "ahab/assets.txt"
+  train_start: "2004-01-01"
+  train_end: "2020-01-01"
+  initial_cash: 100_000.0
+  lookback_window: 60
+
+# ── GRPO Algorithm ────────────────────────────────────────────────
+grpo:
+  group_size: 16            # G: parallel trajectories per state
+  collection_cycles: 4      # M: data-collection steps before 1 train call
+  update_epochs: 20         # K: gradient updates per training batch
+  eps_clip: 0.2             # PPO-style clipping parameter
+  gamma: 0.99               # discount factor
+  beta_kl: 0.01             # KL divergence penalty coefficient
+
+# ── Actor Network ─────────────────────────────────────────────────
+actor:
+  lr: 1.0e-5                # learning rate
+  action_std_init: 0.6      # initial exploration noise
+  action_std_min: 0.4       # minimum exploration noise
+  std_decay_rate: 0.05      # std annealing rate
+  grad_clip: 0.5            # gradient clipping norm
+
+# ── Training Loop ─────────────────────────────────────────────────
+training:
+  max_timesteps: 3_000_000
+  save_freq: 50_000         # checkpoint every N timesteps
+  log_freq: 1               # log every N training cycles
+  log_dir: "logs"
+  model_dir: "checkpoints"
+
+# ── Execution Costs ───────────────────────────────────────────────
+execution:
+  commission_rate: 0.001    # 0.10% per trade
+  slippage_rate: 0.0005     # 0.05% slippage
+
+# ── Trading Rules ─────────────────────────────────────────────────
+trading:
+  action_threshold: 0.1     # |action| below this → hold
+  max_position_size: 0.20   # max 20% of portfolio in single asset
+  min_trade_value: 100.0    # minimum trade size in $
+  cash_reserve: 0.05        # keep 5% in cash at all times
+
+# ── Risk Management (Enhanced mode only) ──────────────────────────
+risk:
+  stop_loss_threshold: 0.10 # 10% drawdown → emergency liquidation
+  risk_free_daily: 0.0      # daily risk-free rate for Sortino calc

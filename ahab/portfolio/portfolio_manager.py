@@ -79,22 +79,20 @@ class PortfolioManager:
     def get_total_portfolio_value(self, current_prices):
         """
         Calculates the live, real-time total value of the portfolio.
-
-        This is the sum of the current cash balance and the market value
-        of all held assets based on the provided current prices.
-        
-        Args:
-            current_prices (pd.Series): A pandas Series with symbols as index
-                                        and their latest prices as values.
-
-        Returns:
-            float: The total current value of the portfolio.
+        Handles both pd.Series and scalar price values.
         """
         market_value = 0.0
         for symbol, quantity in self.holdings.items():
             if quantity > 0:
-                price = current_prices.get(symbol, 0)
-                if price is not None and pd.notna(price.item()):
-                    market_value += quantity * price.item()
+                raw_price = current_prices.get(symbol, 0)
+                if raw_price is None:
+                    continue
+                # Extract scalar price from Series or use as-is
+                try:
+                    price = raw_price.item() if hasattr(raw_price, 'item') else float(raw_price)
+                except (ValueError, TypeError):
+                    continue
+                if pd.notna(price) and price > 0:
+                    market_value += quantity * price
 
         return self.cash_balance + market_value

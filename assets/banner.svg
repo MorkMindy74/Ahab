@@ -1,0 +1,136 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" width="1200" height="300">
+  <defs>
+    <!-- Background gradient -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0a192f"/>
+      <stop offset="100%" stop-color="#172a45"/>
+    </linearGradient>
+
+    <!-- Subtle shimmer overlay -->
+    <linearGradient id="shimmer" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="50%" stop-color="#ffffff" stop-opacity="0.03"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+
+    <!-- Wave gradient -->
+    <linearGradient id="waveGrad1" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1e3a5f" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#0a192f" stop-opacity="0.2"/>
+    </linearGradient>
+    <linearGradient id="waveGrad2" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#234670" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#0a192f" stop-opacity="0.1"/>
+    </linearGradient>
+    <linearGradient id="waveGrad3" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1a3352" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#0a192f" stop-opacity="0.05"/>
+    </linearGradient>
+
+    <!-- Accent glow for whale tail -->
+    <radialGradient id="accentGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#64ffda" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#64ffda" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Clip for clean edges -->
+    <clipPath id="bannerClip">
+      <rect width="1200" height="300" rx="0"/>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#bannerClip)">
+    <!-- Background -->
+    <rect width="1200" height="300" fill="url(#bgGrad)"/>
+    <rect width="1200" height="300" fill="url(#shimmer)"/>
+
+    <!-- Subtle grid pattern for fintech feel -->
+    <g opacity="0.04" stroke="#64ffda" stroke-width="0.5" fill="none">
+      <line x1="200" y1="0" x2="200" y2="300"/>
+      <line x1="400" y1="0" x2="400" y2="300"/>
+      <line x1="600" y1="0" x2="600" y2="300"/>
+      <line x1="800" y1="0" x2="800" y2="300"/>
+      <line x1="1000" y1="0" x2="1000" y2="300"/>
+      <line x1="0" y1="75" x2="1200" y2="75"/>
+      <line x1="0" y1="150" x2="1200" y2="150"/>
+      <line x1="0" y1="225" x2="1200" y2="225"/>
+    </g>
+
+    <!-- Accent glow behind whale tail area -->
+    <ellipse cx="920" cy="130" rx="180" ry="120" fill="url(#accentGlow)"/>
+
+    <!-- Whale tail silhouette - minimalist, elegant -->
+    <g transform="translate(860, 70)" opacity="0.85">
+      <!-- Left fluke -->
+      <path d="M0,120 C10,80 30,30 60,10 C75,2 85,5 80,20 C70,50 55,85 50,120 Z"
+            fill="#64ffda" opacity="0.2"/>
+      <!-- Right fluke -->
+      <path d="M100,120 C90,80 70,30 40,10 C25,2 15,5 20,20 C30,50 45,85 50,120 Z"
+            fill="#64ffda" opacity="0.2"/>
+      <!-- Center body connection -->
+      <path d="M40,120 C42,105 48,105 50,120 C52,105 58,105 60,120 Z"
+            fill="#64ffda" opacity="0.15"/>
+      <!-- Water splash dots -->
+      <circle cx="30" cy="125" r="2" fill="#64ffda" opacity="0.15"/>
+      <circle cx="50" cy="130" r="1.5" fill="#64ffda" opacity="0.12"/>
+      <circle cx="70" cy="125" r="2" fill="#64ffda" opacity="0.15"/>
+      <circle cx="42" cy="135" r="1" fill="#64ffda" opacity="0.1"/>
+      <circle cx="58" cy="135" r="1" fill="#64ffda" opacity="0.1"/>
+    </g>
+
+    <!-- Main title: AHAB -->
+    <text x="480" y="140"
+          font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif"
+          font-size="96"
+          font-weight="700"
+          fill="#e6f1ff"
+          letter-spacing="24"
+          text-anchor="middle">AHAB</text>
+
+    <!-- Thin accent line under title -->
+    <line x1="340" y1="158" x2="620" y2="158" stroke="#64ffda" stroke-width="2" opacity="0.6"/>
+
+    <!-- Small diamond accent at center of line -->
+    <rect x="476" y="154" width="8" height="8" fill="#64ffda" opacity="0.6" transform="rotate(45, 480, 158)"/>
+
+    <!-- Subtitle -->
+    <text x="480" y="195"
+          font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif"
+          font-size="18"
+          font-weight="300"
+          fill="#8892b0"
+          letter-spacing="6"
+          text-anchor="middle">THE RELENTLESS PURSUIT OF ALPHA</text>
+
+    <!-- Tag line - RL Framework -->
+    <text x="480" y="225"
+          font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif"
+          font-size="12"
+          font-weight="400"
+          fill="#64ffda"
+          letter-spacing="3"
+          opacity="0.6"
+          text-anchor="middle">REINFORCEMENT LEARNING FOR PORTFOLIO MANAGEMENT</text>
+
+    <!-- Wave pattern at bottom - three layers for depth -->
+    <path d="M0,280 C100,265 200,270 300,275 C400,280 500,260 600,270 C700,280 800,265 900,272 C1000,279 1100,262 1200,270 L1200,300 L0,300 Z"
+          fill="url(#waveGrad3)"/>
+    <path d="M0,285 C150,272 250,278 400,282 C500,286 600,270 750,278 C850,283 950,272 1100,278 C1150,280 1200,275 1200,275 L1200,300 L0,300 Z"
+          fill="url(#waveGrad2)"/>
+    <path d="M0,292 C100,285 250,288 350,290 C500,293 600,282 750,287 C900,292 1000,285 1100,289 L1200,287 L1200,300 L0,300 Z"
+          fill="url(#waveGrad1)"/>
+
+    <!-- Subtle foam dots on top wave -->
+    <g opacity="0.08" fill="#ccd6f6">
+      <circle cx="150" cy="288" r="1.5"/>
+      <circle cx="350" cy="290" r="1"/>
+      <circle cx="550" cy="284" r="1.5"/>
+      <circle cx="750" cy="288" r="1"/>
+      <circle cx="950" cy="286" r="1.5"/>
+      <circle cx="1100" cy="289" r="1"/>
+    </g>
+
+    <!-- Top subtle border line -->
+    <line x1="0" y1="0" x2="1200" y2="0" stroke="#64ffda" stroke-width="2" opacity="0.3"/>
+  </g>
+</svg>

@@ -1,4 +1,4 @@
-# file: portfolio_simulator/rl_agent/environment.py
+# file: ahab/rl_agent/environment.py
 
 import numpy as np
 import pandas as pd

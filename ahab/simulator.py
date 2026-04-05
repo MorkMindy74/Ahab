@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 
 def run_simulation():
     # --- Configuration ---
-    assets_filepath = 'portfolio_simulator/assets.txt'
+    assets_filepath = 'ahab/assets.txt'
     start_date = '2004-01-01'
     end_date = '2024-01-01'
     initial_cash = 1000000.0

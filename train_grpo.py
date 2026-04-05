@@ -1,4 +1,4 @@
-# file: train.py
+"""Ahab — Baseline GRPO training script."""
 
 import os
 import time
@@ -6,8 +6,8 @@ import pandas as pd
 import warnings
 import torch
 import numpy as np
-from portfolio_simulator.rl_agent.grpo_environment import SingleStateGRPOEnv # <-- IMPORT THE NEW WRAPPER
-from portfolio_simulator.rl_agent.grpo_agent import GRPOAgent
+from ahab.rl_agent.grpo_environment import SingleStateGRPOEnv
+from ahab.rl_agent.grpo_agent import GRPOAgent
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 
@@ -18,7 +18,7 @@ def train():
     print("============================================================================================")
 
     # --- Environment Configuration ---
-    assets_filepath = 'portfolio_simulator/assets.txt'
+    assets_filepath = 'ahab/assets.txt'
     start_date = '2004-01-01'
     end_date = '2020-01-01'
     initial_cash = 100000.0

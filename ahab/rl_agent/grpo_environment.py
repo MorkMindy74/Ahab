@@ -1,4 +1,4 @@
-# file: portfolio_simulator/rl_agent/grpo_env_wrapper.py
+# file: ahab/rl_agent/grpo_environment.py
 
 import numpy as np
 import copy

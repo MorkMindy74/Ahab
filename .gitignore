@@ -1,3 +1,52 @@
+# Models & checkpoints
 *.pth
+*.pt
+*.onnx
+
+# Data & caches
 *.csv
-*.pyc
+ahab/data/cache/
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing & coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Logs
+*.log
+enhanced_logs/
+GRPO_logs_*/
+
+# Saved models directories (contents only, not structure)
+GRPO_models_*/
+enhanced_models/
+
+# Jupyter
+.ipynb_checkpoints/

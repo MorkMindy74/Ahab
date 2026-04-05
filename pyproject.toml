@@ -1,0 +1,81 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ahab"
+version = "0.1.0"
+description = "The Relentless Pursuit of Alpha — Critic-free RL for portfolio management with GRPO"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Antigravity Labs"},
+]
+keywords = [
+    "reinforcement-learning",
+    "portfolio-management",
+    "grpo",
+    "quantitative-finance",
+    "algorithmic-trading",
+    "deep-learning",
+    "pytorch",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Financial and Insurance Industry",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Office/Business :: Financial :: Investment",
+]
+dependencies = [
+    "torch>=2.0",
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "yfinance>=0.2.38",
+    "matplotlib>=3.7",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+enhanced = [
+    "scikit-learn>=1.3",
+]
+app = [
+    "streamlit>=1.30",
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.4",
+]
+
+[project.urls]
+Homepage = "https://github.com/antigravity-lab/ahab"
+Documentation = "https://github.com/antigravity-lab/ahab#readme"
+Repository = "https://github.com/antigravity-lab/ahab"
+Issues = "https://github.com/antigravity-lab/ahab/issues"
+
+[project.scripts]
+ahab-train = "train_grpo:train"
+ahab-train-enhanced = "train_enhanced:train"
+
+[tool.setuptools.packages.find]
+include = ["ahab*"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"
