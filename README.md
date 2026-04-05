@@ -10,11 +10,11 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/antigravity-lab/ahab/actions"><img src="https://img.shields.io/github/actions/workflow/status/antigravity-lab/ahab/ci.yml?branch=main&style=flat-square&logo=github&label=CI" alt="CI"></a>
+  <a href="https://github.com/MorkMindy74/Ahab/actions"><img src="https://img.shields.io/github/actions/workflow/status/MorkMindy74/Ahab/ci.yml?branch=main&style=flat-square&logo=github&label=CI" alt="CI"></a>
   <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.10%2B-blue?style=flat-square&logo=python&logoColor=white" alt="Python"></a>
   <a href="https://pytorch.org/"><img src="https://img.shields.io/badge/PyTorch-2.0%2B-ee4c2c?style=flat-square&logo=pytorch&logoColor=white" alt="PyTorch"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License"></a>
-  <a href="https://github.com/antigravity-lab/ahab/stargazers"><img src="https://img.shields.io/github/stars/antigravity-lab/ahab?style=flat-square&color=gold" alt="Stars"></a>
+  <a href="https://github.com/MorkMindy74/Ahab/stargazers"><img src="https://img.shields.io/github/stars/MorkMindy74/Ahab?style=flat-square&color=gold" alt="Stars"></a>
 </p>
 
 <p align="center">
@@ -171,7 +171,7 @@ Each training cycle: **Reference sync → 4 × (advance state + 16 rollouts) →
 | **Max Drawdown** | -50.15% | -33.9% |
 
 <p align="center">
-  <img src="test_results/advanced_performance.png" alt="Performance Plot" width="90%">
+  <img src="test_results/grpo_test_performance.png" alt="GRPO Performance Plot" width="90%">
 </p>
 
 ### Across Market Regimes
@@ -186,7 +186,7 @@ Each training cycle: **Reference sync → 4 × (advance state + 16 rollouts) →
 ### Enhanced Agent (Sortino + Stop-Loss + VIX)
 
 <p align="center">
-  <img src="enhanced_results/performance.png" alt="Enhanced Performance Plot" width="90%">
+  <img src="test_results/advanced_performance.png" alt="Enhanced Performance Plot" width="90%">
 </p>
 
 The enhanced agent adds **risk-aware rewards** (Sortino ratio), **automatic stop-loss** at 10% drawdown, and **3-channel market features** (Close + RSI + MACD + VIX). See [`configs/enhanced.yaml`](configs/enhanced.yaml) for full configuration.
@@ -198,8 +198,8 @@ The enhanced agent adds **risk-aware rewards** (Sortino ratio), **automatic stop
 ### Install
 
 ```bash
-git clone https://github.com/antigravity-lab/ahab.git
-cd ahab
+git clone https://github.com/MorkMindy74/Ahab.git
+cd Ahab
 pip install -e ".[dev]"
 ```
 
@@ -395,9 +395,9 @@ If you use Ahab in your research, please cite:
 ```bibtex
 @software{ahab2025,
   title  = {Ahab: Critic-Free Reinforcement Learning for Portfolio Management with GRPO},
-  author = {Antigravity Labs},
+  author = {MorkMindy74 and Priyanshu-5257 and Claude},
   year   = {2025},
-  url    = {https://github.com/antigravity-lab/ahab}
+  url    = {https://github.com/MorkMindy74/Ahab}
 }
 ```
 
@@ -411,7 +411,7 @@ We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## License
 
-[MIT](LICENSE) &copy; 2025 Antigravity Labs
+[MIT](LICENSE) &copy; 2025 MorkMindy74
 
 <p align="center">
   <sub>Built with obsession. Powered by GRPO. No critics allowed.</sub>
