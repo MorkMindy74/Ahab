@@ -57,11 +57,11 @@ From each market state, Ahab launches **16 parallel simulations** with different
 
 ```mermaid
 graph TD
-    A[Market State (Close, RSI, MACD)] --> B[1D-CNN Branch]
-    S[Scalar State (VIX, Portfolio)] --> C[MLP Branch]
-    B & C --> D[Feature Fusion]
-    D --> E[SwiGLU Head]
-    E --> F[Portfolio Weights & Safe-Harbor]
+    A["Market State (Close, RSI, MACD)"] --> B["1D-CNN Branch"]
+    S["Scalar State (VIX, Portfolio)"] --> C["MLP Branch"]
+    B & C --> D["Feature Fusion"]
+    D --> E["SwiGLU Head"]
+    E --> F["Portfolio Weights & Safe-Harbor"]
 ```
 
 ### Training Flow
