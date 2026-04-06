@@ -1,4 +1,4 @@
-ctrl+<p align="center">
+<p align="center">
   <img src="assets/banner.svg" alt="Ahab Banner" width="100%">
 </p>
 
