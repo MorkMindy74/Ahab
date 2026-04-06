@@ -96,6 +96,8 @@ Each training cycle accumulates **64 full trajectories** before each policy upda
 > [!NOTE]
 > **Data Discrepancy Note:** You may notice the S&P 500 returns for the full year 2024 are higher (24-26%). Ahab's test period covers April to December 2024. The first 60 trading days are utilized as a warm-up window to calculate stable technical indicators (RSI/MACD). The comparison is strictly apples-to-apples.
 
+![Enhanced Performance 2024](test_results/performance.png)
+
 ### Historical Out-of-Sample (2020–2024)
 > Trained on 2004–2020. Baseline GRPO.
 
@@ -105,7 +107,7 @@ Each training cycle accumulates **64 full trajectories** before each policy upda
 | **Annualized Sharpe** | **1.39** | 0.72 |
 | **Max Drawdown** | -50.15% | -33.9% |
 
-![Enhanced Performance Plot](test_results/advanced_performance.png)
+![Baseline GRPO Performance Plot](test_results/advanced_performance.png)
 
 ## Quick Start
 
