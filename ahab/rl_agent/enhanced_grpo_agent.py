@@ -10,6 +10,14 @@ network is built to match the EXPANDED state space of EnhancedPortfolioEnv:
 The CNN branch now has 3 * n_assets input channels (one conv for each feature
 type: price, RSI, MACD).  Everything else (buffer, GRPO update, KL penalty)
 is identical to the original.
+
+Improvements over baseline:
+- LayerNorm for training stability
+- Orthogonal weight initialization for better gradient flow
+- Mini-batch training within K-epoch loop
+- Adaptive KL coefficient (auto-adjusts based on observed divergence)
+- Correct KL sign: KL(π||π_ref) = E[log π - log π_ref]
+- Independent(Normal) instead of MultivariateNormal for efficiency
 """
 
 import copy
@@ -17,7 +25,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.distributions import MultivariateNormal
+from torch.distributions import Normal, Independent
 
 # ────────────────────────────────────────────────────────────────────────────
 #  Utility activations
@@ -40,6 +48,9 @@ class EnhancedActorNetwork(nn.Module):
     The CNN branch receives a tensor of shape (batch, n_assets * 3, lookback)
     — 3 channels per asset: normalised close, RSI/100, normalised MACD.
     An extra MLP branch handles (cash, holdings, VIX window).
+
+    Includes LayerNorm for training stability and orthogonal weight
+    initialization for better gradient flow.
     """
 
     def __init__(
@@ -65,14 +76,15 @@ class EnhancedActorNetwork(nn.Module):
 
         # ── CNN branch for market sequences ──────────────────────
         in_ch = n_assets * n_feat_per_asset   # e.g. 90 channels
+        cnn_out = 256 * lookback_window
         self.cnn = nn.Sequential(
             nn.Conv1d(in_ch, 128, kernel_size=3, padding=1),
             nn.ReLU(),
             nn.Conv1d(128, 256, kernel_size=3, padding=1),
             nn.ReLU(),
-            nn.Flatten(),                          # 256 * lookback
+            nn.Flatten(),
+            nn.LayerNorm(cnn_out),
         )
-        cnn_out = 256 * lookback_window
 
         # ── MLP branch for scalars: cash + holdings + VIX window ─
         scalar_dim = 1 + n_assets + lookback_window
@@ -80,6 +92,7 @@ class EnhancedActorNetwork(nn.Module):
             nn.Linear(scalar_dim, 128),
             nn.ReLU(),
             nn.Linear(128, 256),
+            nn.LayerNorm(256),
         )
 
         # ── Combined actor head ───────────────────────────────────
@@ -87,11 +100,29 @@ class EnhancedActorNetwork(nn.Module):
         self.actor_head = nn.Sequential(
             nn.Linear(combined, 512 * 2),   # *2 for SwiGLU
             SwiGLU(),
+            nn.LayerNorm(512),
             nn.Linear(512, 256 * 2),
             SwiGLU(),
             nn.Linear(256, action_dim),
             nn.Tanh(),
         )
+
+        self._init_weights()
+
+    def _init_weights(self):
+        """Orthogonal initialization for linear layers, Xavier for conv layers."""
+        for module in self.modules():
+            if isinstance(module, nn.Linear):
+                nn.init.orthogonal_(module.weight, gain=np.sqrt(2))
+                if module.bias is not None:
+                    nn.init.zeros_(module.bias)
+            elif isinstance(module, nn.Conv1d):
+                nn.init.xavier_uniform_(module.weight)
+                if module.bias is not None:
+                    nn.init.zeros_(module.bias)
+        # Final layer should have small weights for stable initial policy
+        final_linear = self.actor_head[-2]  # Linear before Tanh
+        nn.init.orthogonal_(final_linear.weight, gain=0.01)
 
     # ── State splitting ─────────────────────────────────────────────────────
 
@@ -107,17 +138,15 @@ class EnhancedActorNetwork(nn.Module):
         """
         n, L, F = self.n_assets, self.lookback, self.n_feat
         scalar_end = 1 + n
-        market_end = scalar_end + n * F * L   # = 1 + n + n*3*L
+        market_end = scalar_end + n * F * L
         vix_end    = market_end + L
 
-        scalar  = state[:, :scalar_end]                           # (B, 1+n)
-        market  = state[:, scalar_end:market_end]                 # (B, n*3*L)
-        vix_win = state[:, market_end:vix_end]                    # (B, L)
+        scalar  = state[:, :scalar_end]
+        market  = state[:, scalar_end:market_end]
+        vix_win = state[:, market_end:vix_end]
 
-        # Reshape market → (B, n*3, L)  for Conv1d
         market = market.view(-1, n * F, L)
-
-        scalar_full = torch.cat([scalar, vix_win], dim=1)         # (B, 1+n+L)
+        scalar_full = torch.cat([scalar, vix_win], dim=1)
         return scalar_full, market
 
     def forward(self, state: torch.Tensor) -> torch.Tensor:
@@ -132,23 +161,24 @@ class EnhancedActorNetwork(nn.Module):
             (self.action_dim,), std ** 2
         ).to(self.device)
 
+    def _build_dist(self, mean: torch.Tensor):
+        std = torch.sqrt(self.action_var).expand_as(mean)
+        return Independent(Normal(mean, std), 1)
+
     def act(self, state: torch.Tensor, deterministic: bool = False):
         if state.dim() == 1:
             state = state.unsqueeze(0)
         mean = self.forward(state)
         if deterministic:
             return mean.detach(), None
-        cov = torch.diag(self.action_var).unsqueeze(0)
-        dist = MultivariateNormal(mean, cov)
+        dist = self._build_dist(mean)
         action = dist.sample()
-        logp   = dist.log_prob(action)
+        logp = dist.log_prob(action)
         return action.detach(), logp.detach()
 
     def evaluate(self, state: torch.Tensor, action: torch.Tensor):
         mean = self.forward(state)
-        var  = self.action_var.expand_as(mean)
-        cov  = torch.diag_embed(var)
-        dist = MultivariateNormal(mean, cov)
+        dist = self._build_dist(mean)
         logp = dist.log_prob(action)
         ent  = dist.entropy()
         return logp, ent
@@ -189,7 +219,12 @@ class GRPOBuffer:
 
 class EnhancedGRPOAgent:
     """
-    Identical GRPO training logic — only the actor network class changes.
+    GRPO training logic with the enhanced actor network.
+
+    Improvements:
+    - Mini-batch training within K-epoch loop for better gradient estimates
+    - Adaptive KL coefficient that auto-adjusts based on observed divergence
+    - Configurable entropy coefficient
     """
 
     def __init__(
@@ -203,6 +238,9 @@ class EnhancedGRPOAgent:
         action_std_init: float,
         device,
         beta_kl: float = 0.01,
+        entropy_coef: float = 0.01,
+        mini_batch_size: int = 256,
+        kl_target: float = 0.01,
         n_assets: int = 30,
         lookback_window: int = 60,
     ):
@@ -212,6 +250,9 @@ class EnhancedGRPOAgent:
         self.eps_clip    = eps_clip
         self.K_epochs    = K_epochs
         self.beta_kl     = beta_kl
+        self.entropy_coef = entropy_coef
+        self.mini_batch_size = mini_batch_size
+        self.kl_target   = kl_target
 
         self.buffer = GRPOBuffer()
 
@@ -228,7 +269,7 @@ class EnhancedGRPOAgent:
         for p in self.reference_policy.parameters():
             p.requires_grad = False
 
-    # ---- Public PN API --------------------------------------------------------
+    # ---- Public API -----------------------------------------------------------
 
     def set_action_std(self, std: float):
         self.action_std = std
@@ -276,29 +317,54 @@ class EnhancedGRPOAgent:
             adv = (adv - adv.mean()) / (adv.std() + 1e-8)
 
         stats = {"policy_loss": [], "kl_divergence": [], "entropy": [], "total_loss": []}
+        n_samples = old_s.size(0)
 
         for _ in range(self.K_epochs):
-            lp, ent = self.policy.evaluate(old_s, old_a)
-            ratios  = torch.exp(lp - old_lp)
+            perm = torch.randperm(n_samples, device=self.device)
+            epoch_pl, epoch_kl, epoch_ent, epoch_tl = [], [], [], []
 
-            s1 = ratios * adv
-            s2 = torch.clamp(ratios, 1 - self.eps_clip, 1 + self.eps_clip) * adv
-            pl = -torch.min(s1, s2).mean()
+            for start in range(0, n_samples, self.mini_batch_size):
+                end = min(start + self.mini_batch_size, n_samples)
+                idx = perm[start:end]
 
-            with torch.no_grad():
-                ref_lp, _ = self.reference_policy.evaluate(old_s, old_a)
-            kl   = torch.mean(ref_lp - lp)
-            loss = pl + self.beta_kl * kl - 0.01 * ent.mean()
+                mb_s = old_s[idx]
+                mb_a = old_a[idx]
+                mb_lp = old_lp[idx]
+                mb_adv = adv[idx]
 
-            self.optimizer.zero_grad()
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.policy.parameters(), 0.5)
-            self.optimizer.step()
+                lp, ent = self.policy.evaluate(mb_s, mb_a)
+                ratios = torch.exp(lp - mb_lp)
 
-            stats["policy_loss"].append(pl.item())
-            stats["kl_divergence"].append(kl.item())
-            stats["entropy"].append(ent.mean().item())
-            stats["total_loss"].append(loss.item())
+                s1 = ratios * mb_adv
+                s2 = torch.clamp(ratios, 1 - self.eps_clip, 1 + self.eps_clip) * mb_adv
+                pl = -torch.min(s1, s2).mean()
+
+                with torch.no_grad():
+                    ref_lp, _ = self.reference_policy.evaluate(mb_s, mb_a)
+                kl   = torch.mean(lp - ref_lp)  # KL(π||π_ref)
+                loss = pl + self.beta_kl * kl - self.entropy_coef * ent.mean()
+
+                self.optimizer.zero_grad()
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.policy.parameters(), 0.5)
+                self.optimizer.step()
+
+                epoch_pl.append(pl.item())
+                epoch_kl.append(kl.item())
+                epoch_ent.append(ent.mean().item())
+                epoch_tl.append(loss.item())
+
+            stats["policy_loss"].append(np.mean(epoch_pl))
+            stats["kl_divergence"].append(np.mean(epoch_kl))
+            stats["entropy"].append(np.mean(epoch_ent))
+            stats["total_loss"].append(np.mean(epoch_tl))
+
+        # Adaptive KL penalty: adjust beta_kl based on observed KL
+        mean_kl = np.mean(stats["kl_divergence"])
+        if mean_kl > self.kl_target * 1.5:
+            self.beta_kl = min(self.beta_kl * 2.0, 1.0)
+        elif mean_kl < self.kl_target / 1.5:
+            self.beta_kl = max(self.beta_kl / 2.0, 1e-4)
 
         self.buffer.clear()
         return {k: np.mean(v) for k, v in stats.items()}
@@ -310,6 +376,7 @@ class EnhancedGRPOAgent:
             "policy_state_dict":    self.policy.state_dict(),
             "optimizer_state_dict": self.optimizer.state_dict(),
             "action_std":           self.action_std,
+            "beta_kl":              self.beta_kl,
         }, path)
 
     def load(self, path: str):
@@ -318,3 +385,5 @@ class EnhancedGRPOAgent:
         self.optimizer.load_state_dict(ck["optimizer_state_dict"])
         self.action_std = ck["action_std"]
         self.policy.set_action_std(self.action_std)
+        if "beta_kl" in ck:
+            self.beta_kl = ck["beta_kl"]

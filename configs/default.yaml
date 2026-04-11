@@ -27,6 +27,10 @@ actor:
   action_std_min: 0.4       # minimum exploration noise
   std_decay_rate: 0.05      # std annealing rate
   grad_clip: 0.5            # gradient clipping norm
+  entropy_coef: 0.01        # entropy bonus coefficient
+  mini_batch_size: 256      # mini-batch size within K-epoch loop
+  kl_target: 0.01           # target KL for adaptive β_kl
+  cosine_lr_eta_min: 1.0e-6 # minimum LR for cosine schedule
 
 # ── Training Loop ─────────────────────────────────────────────────
 training:

@@ -5,6 +5,9 @@ Training script for the Enhanced GRPO Portfolio Agent.
 Improvements over the original train_grpo.py:
   - Uses EnhancedPortfolioEnv  (Sortino reward, stop-loss, safe-harbor)
   - Uses EnhancedGRPOAgent     (3-channel CNN: close + RSI + MACD; +VIX)
+  - Cosine LR schedule with warm restarts
+  - Adaptive KL coefficient
+  - Mini-batch training
   - Training window: 2013-01-01 → 2023-12-31
   - Test window (held out): 2024-01-01 → 2025-01-01
   - Saves a checkpoint every 50 k timesteps in  enhanced_models/
@@ -44,6 +47,9 @@ ACTION_STD_INIT = 0.6
 MIN_ACTION_STD  = 0.4
 STD_DECAY_RATE  = 0.05
 BETA_KL         = 0.01
+ENTROPY_COEF    = 0.01
+MINI_BATCH_SIZE = 256
+KL_TARGET       = 0.01
 
 MAX_TIMESTEPS   = int(3e6)
 SAVE_FREQ       = 50_000        # save a checkpoint every N timesteps
@@ -60,6 +66,7 @@ def train():
     print(f"Device : {device}")
     print(f"Train  : {TRAIN_START}  ->  {TRAIN_END}")
     print(f"G={GROUP_SIZE}  M={M_CYCLES}  K={K_EPOCHS}  lr={LR_ACTOR}")
+    print(f"Mini-batch={MINI_BATCH_SIZE}  KL target={KL_TARGET}  Entropy coef={ENTROPY_COEF}")
     print("=" * 80)
 
     # ── Environment ──────────────────────────────────────────────────────
@@ -70,6 +77,7 @@ def train():
         end_date=TRAIN_END,
         initial_cash=INITIAL_CASH,
         stop_loss_threshold=STOP_LOSS,
+        gamma=GAMMA,
     )
     env.reset()
     print(f"State dim  : {env.state_space_dim}")
@@ -87,8 +95,17 @@ def train():
         action_std_init=ACTION_STD_INIT,
         device=device,
         beta_kl=BETA_KL,
+        entropy_coef=ENTROPY_COEF,
+        mini_batch_size=MINI_BATCH_SIZE,
+        kl_target=KL_TARGET,
         n_assets=n_assets,
         lookback_window=env.base_env.lookback_window,
+    )
+
+    # ── Cosine LR schedule ───────────────────────────────────────────────
+    estimated_cycles = MAX_TIMESTEPS // (GROUP_SIZE * M_CYCLES * 60)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        agent.optimizer, T_max=estimated_cycles, eta_min=LR_ACTOR * 0.1,
     )
 
     # ── Logging dirs ─────────────────────────────────────────────────────
@@ -97,7 +114,7 @@ def train():
     log_path = os.path.join(LOG_DIR, "training_summary.csv")
     if not os.path.exists(log_path):
         with open(log_path, "w") as f:
-            f.write("cycle,timesteps,mean_reward,max_reward,loss,kl,entropy\n")
+            f.write("cycle,timesteps,mean_reward,max_reward,loss,kl,entropy,lr,beta_kl\n")
 
     # ── Training loop ────────────────────────────────────────────────────
     time_step        = 0
@@ -130,31 +147,36 @@ def train():
         # 3. Train on accumulated data
         train_stats = agent.train()
 
-        # 4. Logging
+        # 4. Step LR scheduler
+        scheduler.step()
+
+        # 5. Logging
         if training_cycle % LOG_FREQ == 0:
             mean_r = np.mean(cycle_rewards)
             max_r  = np.max(cycle_max_rewards)
             loss   = train_stats.get("policy_loss", 0)
             kl     = train_stats.get("kl_divergence", 0)
             ent    = train_stats.get("entropy", 0)
+            current_lr = scheduler.get_last_lr()[0]
             elapsed = (time.time() - t_start) / 60
 
             print(
                 f"Cycle {training_cycle:4d} | T={time_step:>9,} | "
                 f"MaxR={max_r:+.3f} | MeanR={mean_r:+.3f} | "
-                f"KL={kl:.4f} | Loss={loss:.6f} | {elapsed:.1f} min"
+                f"KL={kl:.4f} | Loss={loss:.6f} | β_kl={agent.beta_kl:.4f} | "
+                f"LR={current_lr:.2e} | {elapsed:.1f} min"
             )
             with open(log_path, "a") as f:
-                f.write(f"{training_cycle},{time_step},{mean_r},{max_r},{loss},{kl},{ent}\n")
+                f.write(f"{training_cycle},{time_step},{mean_r},{max_r},{loss},{kl},{ent},{current_lr},{agent.beta_kl}\n")
 
-        # 5. Save checkpoint
+        # 6. Save checkpoint
         if (time_step - last_save_at) >= SAVE_FREQ:
             ckpt = os.path.join(MODEL_DIR, f"enhanced_portfolio_{time_step}.pth")
             agent.save(ckpt)
             print(f"  Saved checkpoint -> {ckpt}")
             last_save_at = time_step
 
-        # 6. Action std annealing
+        # 7. Action std annealing
         new_std = max(MIN_ACTION_STD,
                       agent.action_std - (STD_DECAY_RATE / MAX_TIMESTEPS) * cycle_ts)
         agent.set_action_std(new_std)

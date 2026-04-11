@@ -27,6 +27,10 @@ actor:
   action_std_min: 0.4
   std_decay_rate: 0.05
   grad_clip: 0.5
+  entropy_coef: 0.01
+  mini_batch_size: 256
+  kl_target: 0.01
+  cosine_lr_eta_min: 1.0e-6
 
 # ── Training Loop ─────────────────────────────────────────────────
 training:

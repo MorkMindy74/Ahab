@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.distributions import MultivariateNormal
+from torch.distributions import Normal, Independent
 import numpy as np
 import copy
 
@@ -13,8 +13,9 @@ class SwiGLU(nn.Module):
 
 class GRPOActorNetwork(nn.Module):
     """
-    Actor-only network for GRPO using the same hybrid CNN-MLP architecture.
-    Removes the critic head from the original ActorCritic.
+    Actor-only network for GRPO using a hybrid CNN-MLP architecture.
+    Includes LayerNorm for training stability and orthogonal weight
+    initialization for better gradient flow.
     """
     def __init__(self, state_dim, action_dim, action_std_init, device, n_assets=30, lookback_window=60):
         super(GRPOActorNetwork, self).__init__()
@@ -25,16 +26,16 @@ class GRPOActorNetwork(nn.Module):
         self.action_dim = action_dim
         self.action_var = torch.full((action_dim,), action_std_init * action_std_init).to(device)
 
-        # --- CNN Branch for Market Data (same as PPO) ---
+        # --- CNN Branch for Market Data ---
+        cnn_output_size = 128 * lookback_window
         self.cnn_branch = nn.Sequential(
             nn.Conv1d(in_channels=n_assets, out_channels=64, kernel_size=3, padding=1),
             nn.ReLU(),
             nn.Conv1d(in_channels=64, out_channels=128, kernel_size=3, padding=1),
             nn.ReLU(),
             nn.Flatten(),
+            nn.LayerNorm(cnn_output_size),
         )
-        # Calculate the flattened size after CNN
-        cnn_output_size = 128 * lookback_window
 
         # --- MLP Branch for Vector Data (Cash + Holdings) ---
         vector_input_dim = 1 + n_assets
@@ -42,75 +43,79 @@ class GRPOActorNetwork(nn.Module):
             nn.Linear(vector_input_dim, 64),
             nn.ReLU(),
             nn.Linear(64, 128),
+            nn.LayerNorm(128),
         )
 
-        # --- Combined Network with SwiGLU (Actor Head Only) ---
+        # --- Combined Network with SwiGLU (Actor Head) ---
         combined_dim = cnn_output_size + 128
-        
-        # Actor Head (same as PPO)
         self.actor_head = nn.Sequential(
-            nn.Linear(combined_dim, 256 * 2), # Double size for SwiGLU
+            nn.Linear(combined_dim, 256 * 2),
             SwiGLU(),
-            nn.Linear(256, 256 * 2), # Double size for SwiGLU
+            nn.LayerNorm(256),
+            nn.Linear(256, 256 * 2),
             SwiGLU(),
             nn.Linear(256, action_dim),
             nn.Tanh()
         )
 
+        self._init_weights()
+
+    def _init_weights(self):
+        """Orthogonal initialization for linear layers, Xavier for conv layers."""
+        for module in self.modules():
+            if isinstance(module, nn.Linear):
+                nn.init.orthogonal_(module.weight, gain=np.sqrt(2))
+                if module.bias is not None:
+                    nn.init.zeros_(module.bias)
+            elif isinstance(module, nn.Conv1d):
+                nn.init.xavier_uniform_(module.weight)
+                if module.bias is not None:
+                    nn.init.zeros_(module.bias)
+        # Final layer should have small weights for stable initial policy
+        final_linear = self.actor_head[-2]  # Linear before Tanh
+        nn.init.orthogonal_(final_linear.weight, gain=0.01)
+
     def _split_state(self, state):
-        # State shape: (batch_size, 1 + n_assets + n_assets * lookback_window)
         vector_data = state[:, :1 + self.n_assets]
         market_data = state[:, 1 + self.n_assets:]
         market_data = market_data.view(-1, self.n_assets, self.lookback_window)
         return vector_data, market_data
 
     def forward(self, state):
-        # Split the input state
         vector_data, market_data = self._split_state(state)
-
-        # Process through branches
         cnn_features = self.cnn_branch(market_data)
         mlp_features = self.mlp_branch(vector_data)
-
-        # Combine features
         combined_features = torch.cat((cnn_features, mlp_features), dim=1)
-
-        # Get action mean (no critic value)
         action_mean = self.actor_head(combined_features)
-        
         return action_mean
 
     def set_action_std(self, new_action_std):
         self.action_var = torch.full((self.action_dim,), new_action_std * new_action_std).to(self.device)
 
+    def _build_dist(self, action_mean):
+        action_std = torch.sqrt(self.action_var).expand_as(action_mean)
+        return Independent(Normal(action_mean, action_std), 1)
+
     def act(self, state, deterministic=False):
-        # Add batch dimension if it's a single state
         if state.dim() == 1:
             state = state.unsqueeze(0)
-            
+
         action_mean = self.forward(state)
-        
+
         if deterministic:
             return action_mean.detach(), None
-            
-        cov_mat = torch.diag(self.action_var).unsqueeze(dim=0)
-        dist = MultivariateNormal(action_mean, cov_mat)
 
+        dist = self._build_dist(action_mean)
         action = dist.sample()
         action_logprob = dist.log_prob(action)
-        
+
         return action.detach(), action_logprob.detach()
 
     def evaluate(self, state, action):
         action_mean = self.forward(state)
-        
-        action_var = self.action_var.expand_as(action_mean)
-        cov_mat = torch.diag_embed(action_var)
-        dist = MultivariateNormal(action_mean, cov_mat)
-
+        dist = self._build_dist(action_mean)
         action_logprobs = dist.log_prob(action)
         dist_entropy = dist.entropy()
-
         return action_logprobs, dist_entropy
 
 class GRPOBuffer:
@@ -121,16 +126,6 @@ class GRPOBuffer:
         self.clear()
 
     def store_group_episode(self, states, actions, logprobs, rewards, group_advantages):
-        """
-        Store a complete group episode.
-        
-        Args:
-            states: List of state tensors for the episode
-            actions: List of action tensors for the episode  
-            logprobs: List of log probability tensors
-            rewards: List of rewards (scalar values)
-            group_advantages: List of advantage values (calculated from group)
-        """
         self.states.extend(states)
         self.actions.extend(actions)
         self.logprobs.extend(logprobs)
@@ -138,17 +133,14 @@ class GRPOBuffer:
         self.advantages.extend(group_advantages)
 
     def get_batch(self):
-        """
-        Return all stored data as tensors.
-        """
         if len(self.states) == 0:
             return None, None, None, None
-            
+
         states = torch.stack(self.states)
         actions = torch.stack(self.actions)
-        logprobs = torch.stack(self.logprobs).squeeze(-1)  # Remove extra dimension
+        logprobs = torch.stack(self.logprobs).squeeze(-1)
         advantages = torch.tensor(self.advantages, dtype=torch.float32)
-        
+
         return states, actions, logprobs, advantages
 
     def clear(self):
@@ -161,59 +153,54 @@ class GRPOBuffer:
 class GRPOAgent:
     """
     GRPO Agent that uses group-relative advantages instead of a critic network.
-    (This class is already correctly implemented for batch training and needs no changes.)
+
+    Improvements over baseline:
+    - Mini-batch training within K-epoch loop for better gradient estimates
+    - Adaptive KL coefficient that auto-adjusts based on observed divergence
+    - Configurable entropy coefficient
     """
-    def __init__(self, state_dim, action_dim, lr_actor, gamma, K_epochs, eps_clip, action_std_init, device, beta_kl=0.01):
+    def __init__(self, state_dim, action_dim, lr_actor, gamma, K_epochs, eps_clip,
+                 action_std_init, device, beta_kl=0.01, entropy_coef=0.01,
+                 mini_batch_size=256, kl_target=0.01):
         self.device = device
         self.action_std = action_std_init
         self.gamma = gamma
         self.eps_clip = eps_clip
         self.K_epochs = K_epochs
-        self.beta_kl = beta_kl  # KL divergence coefficient
-        
+        self.beta_kl = beta_kl
+        self.entropy_coef = entropy_coef
+        self.mini_batch_size = mini_batch_size
+        self.kl_target = kl_target  # Target KL for adaptive coefficient
+
         self.buffer = GRPOBuffer()
 
-        # Initialize the actor network
         self.policy = GRPOActorNetwork(state_dim, action_dim, action_std_init, device).to(device)
         self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=lr_actor)
 
-        # Reference policy for KL divergence (frozen copy of initial policy)
         self.reference_policy = GRPOActorNetwork(state_dim, action_dim, action_std_init, device).to(device)
         self.reference_policy.load_state_dict(self.policy.state_dict())
-        
-        # Freeze reference policy
         for param in self.reference_policy.parameters():
             param.requires_grad = False
-
-        self.MseLoss = nn.MSELoss()
 
     def set_action_std(self, new_action_std):
         self.action_std = new_action_std
         self.policy.set_action_std(new_action_std)
 
     def select_action(self, state, deterministic=False):
-        """Select action for a single state."""
         with torch.no_grad():
             state = torch.FloatTensor(state).to(self.device)
             action, action_logprob = self.policy.act(state, deterministic)
-
         if action_logprob is not None:
             return action.cpu().numpy().flatten(), action_logprob.cpu().item()
-        else:
-            return action.cpu().numpy().flatten(), None
+        return action.cpu().numpy().flatten(), None
 
     def select_actions_for_vec(self, states):
-        """Select actions for a batch of states from vectorized environments."""
         with torch.no_grad():
             states = torch.FloatTensor(states).to(self.device)
-            actions, action_logprobs = self.policy.act(states)
-
+            actions, _ = self.policy.act(states)
         return actions.cpu().numpy()
 
     def generate_group_actions(self, state, group_size=4):
-        """
-        Generate multiple diverse actions for the same state.
-        """
         actions_and_logprobs = []
         with torch.no_grad():
             state_tensor = torch.FloatTensor(state).to(self.device)
@@ -226,9 +213,6 @@ class GRPOAgent:
         return actions_and_logprobs
 
     def calculate_group_advantages(self, group_rewards, normalize=True):
-        """
-        Calculate group-relative advantages from episode rewards.
-        """
         group_rewards = np.array(group_rewards)
         if normalize and len(group_rewards) > 1:
             mean_reward = np.mean(group_rewards)
@@ -241,45 +225,74 @@ class GRPOAgent:
 
     def train(self):
         """
-        Train the policy using GRPO algorithm.
+        Train the policy using GRPO with mini-batch updates and adaptive KL.
         """
         if len(self.buffer.states) == 0:
             return {}
 
         batch_data = self.buffer.get_batch()
-        if batch_data[0] is None: return {}
-            
+        if batch_data[0] is None:
+            return {}
+
         old_states, old_actions, old_logprobs, advantages = batch_data
-        old_states, old_actions, old_logprobs, advantages = \
-            old_states.to(self.device), old_actions.to(self.device), old_logprobs.to(self.device), advantages.to(self.device)
+        old_states = old_states.to(self.device)
+        old_actions = old_actions.to(self.device)
+        old_logprobs = old_logprobs.to(self.device)
+        advantages = advantages.to(self.device)
 
         if advantages.numel() > 1:
             advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
         training_stats = {'policy_loss': [], 'kl_divergence': [], 'entropy': [], 'total_loss': []}
+        n_samples = old_states.size(0)
 
         for _ in range(self.K_epochs):
-            logprobs, entropy = self.policy.evaluate(old_states, old_actions)
-            ratios = torch.exp(logprobs - old_logprobs)
+            # Mini-batch training: shuffle and iterate over mini-batches
+            perm = torch.randperm(n_samples, device=self.device)
+            epoch_pl, epoch_kl, epoch_ent, epoch_tl = [], [], [], []
 
-            surr1 = ratios * advantages
-            surr2 = torch.clamp(ratios, 1 - self.eps_clip, 1 + self.eps_clip) * advantages
-            policy_loss = -torch.min(surr1, surr2).mean()
+            for start in range(0, n_samples, self.mini_batch_size):
+                end = min(start + self.mini_batch_size, n_samples)
+                idx = perm[start:end]
 
-            with torch.no_grad():
-                ref_logprobs, _ = self.reference_policy.evaluate(old_states, old_actions)
-            kl_div = torch.mean(ref_logprobs-logprobs) 
-            total_loss = policy_loss + self.beta_kl * kl_div - 0.01 * entropy.mean()
+                mb_states = old_states[idx]
+                mb_actions = old_actions[idx]
+                mb_old_logprobs = old_logprobs[idx]
+                mb_advantages = advantages[idx]
 
-            self.optimizer.zero_grad()
-            total_loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.policy.parameters(), 0.5)
-            self.optimizer.step()
+                logprobs, entropy = self.policy.evaluate(mb_states, mb_actions)
+                ratios = torch.exp(logprobs - mb_old_logprobs)
 
-            training_stats['policy_loss'].append(policy_loss.item())
-            training_stats['kl_divergence'].append(kl_div.item())
-            training_stats['entropy'].append(entropy.mean().item())
-            training_stats['total_loss'].append(total_loss.item())
+                surr1 = ratios * mb_advantages
+                surr2 = torch.clamp(ratios, 1 - self.eps_clip, 1 + self.eps_clip) * mb_advantages
+                policy_loss = -torch.min(surr1, surr2).mean()
+
+                with torch.no_grad():
+                    ref_logprobs, _ = self.reference_policy.evaluate(mb_states, mb_actions)
+                kl_div = torch.mean(logprobs - ref_logprobs)  # KL(π||π_ref)
+                total_loss = policy_loss + self.beta_kl * kl_div - self.entropy_coef * entropy.mean()
+
+                self.optimizer.zero_grad()
+                total_loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.policy.parameters(), 0.5)
+                self.optimizer.step()
+
+                epoch_pl.append(policy_loss.item())
+                epoch_kl.append(kl_div.item())
+                epoch_ent.append(entropy.mean().item())
+                epoch_tl.append(total_loss.item())
+
+            training_stats['policy_loss'].append(np.mean(epoch_pl))
+            training_stats['kl_divergence'].append(np.mean(epoch_kl))
+            training_stats['entropy'].append(np.mean(epoch_ent))
+            training_stats['total_loss'].append(np.mean(epoch_tl))
+
+        # Adaptive KL penalty: adjust beta_kl based on observed KL
+        mean_kl = np.mean(training_stats['kl_divergence'])
+        if mean_kl > self.kl_target * 1.5:
+            self.beta_kl = min(self.beta_kl * 2.0, 1.0)
+        elif mean_kl < self.kl_target / 1.5:
+            self.beta_kl = max(self.beta_kl / 2.0, 1e-4)
 
         self.buffer.clear()
         return {key: np.mean(values) for key, values in training_stats.items()}
@@ -289,6 +302,7 @@ class GRPOAgent:
             'policy_state_dict': self.policy.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
             'action_std': self.action_std,
+            'beta_kl': self.beta_kl,
         }, checkpoint_path)
 
     def load(self, checkpoint_path):
@@ -297,3 +311,5 @@ class GRPOAgent:
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         self.action_std = checkpoint['action_std']
         self.policy.set_action_std(self.action_std)
+        if 'beta_kl' in checkpoint:
+            self.beta_kl = checkpoint['beta_kl']

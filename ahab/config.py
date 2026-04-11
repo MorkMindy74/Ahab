@@ -49,6 +49,10 @@ class ActorConfig:
     action_std_min: float = 0.4
     std_decay_rate: float = 0.05
     grad_clip: float = 0.5
+    entropy_coef: float = 0.01
+    mini_batch_size: int = 256
+    kl_target: float = 0.01         # target KL for adaptive coefficient
+    cosine_lr_eta_min: float = 1e-6  # minimum LR for cosine schedule
 
 
 @dataclass

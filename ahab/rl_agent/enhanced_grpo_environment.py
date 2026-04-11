@@ -17,9 +17,10 @@ class EnhancedSingleStateGRPOEnv:
 
     def __init__(self, group_size: int, assets_filepath: str,
                  start_date: str, end_date: str, initial_cash: float = 100_000.0,
-                 stop_loss_threshold: float = 0.10):
+                 stop_loss_threshold: float = 0.10, gamma: float = 0.99):
 
         self.group_size = group_size
+        self.gamma = gamma
         self.env_params = dict(
             assets_filepath=assets_filepath,
             start_date=start_date,
@@ -71,12 +72,23 @@ class EnhancedSingleStateGRPOEnv:
 
     # ------------------------------------------------------------------ #
 
+    def _discount_advantages(self, episode_advantage: float, episode_length: int) -> list:
+        """
+        Compute per-step discounted advantages from the episode-level advantage.
+        Later steps (closer to terminal outcome) receive stronger signal.
+        """
+        discounted = np.zeros(episode_length)
+        for t in range(episode_length):
+            steps_to_end = episode_length - 1 - t
+            discounted[t] = episode_advantage * (self.gamma ** steps_to_end)
+        return discounted.tolist()
+
     def collect_group_data_into_buffer(self, agent) -> dict:
         """
         GRPO data-collection step:
           1. Generate G diverse first-actions from the current base_env state.
           2. Run G full trajectories (deep-copied envs).
-          3. Compute group-relative advantages.
+          3. Compute group-relative advantages with per-step discounting.
           4. Push everything into agent.buffer.
         Returns stats dict for logging.
         """
@@ -101,9 +113,10 @@ class EnhancedSingleStateGRPOEnv:
             ep_states   = [torch.FloatTensor(s).to(agent.device) for s in ep_data["states"]]
             ep_actions  = [torch.FloatTensor(a).to(agent.device) for a in ep_data["actions"]]
             ep_logprobs = [torch.FloatTensor([lp]).to(agent.device) for lp in ep_data["logprobs"]]
+            ep_advantages = self._discount_advantages(advantage, ep_len)
             agent.buffer.store_group_episode(
                 ep_states, ep_actions, ep_logprobs,
-                ep_data["rewards"], [advantage] * ep_len,
+                ep_data["rewards"], ep_advantages,
             )
 
         return {
